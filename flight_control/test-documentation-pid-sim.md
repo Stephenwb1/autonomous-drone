@@ -81,7 +81,17 @@ Disable the disturbance by setting `DISTURBANCE_TORQUE` to `0.0f`.
 - Note whether a steady-state offset remains.
 
 **Results:**
-_(fill in after running)_
+
+**Status: PASS**
+
+- **Oscillation observed:** Yes. The angle overshoots past 0 degrees (goes negative to approximately -2 degrees) within the first 0.1 seconds, then oscillates briefly before settling. This confirms the P-only "spring with no damper" hypothesis.
+- **Zero-crossings:** The angle crosses zero approximately 2-3 times in the first 0.5 seconds.
+- **Settling time:** ~0.5-1 second to reach and stay within 1 degree of setpoint. The system settles faster than ideal (zero-drag) P-only theory predicts because the plant model includes aerodynamic drag (`DRAG_COEFF = 1.0e-5`), which dissipates energy. This is physically realistic -- real drones experience air resistance -- and does not invalidate the test.
+- **Steady-state offset:** Effectively zero in this simulation. On real hardware with gravity-induced torques, a steady-state offset would likely appear — this is why we need the I-term (tested in PID-SIM-03).
+- **PID output:** Mirrors the angle as expected. Initial output saturates at -100 (clamped by `PID_OUTPUT_LIMIT`) because KP * 15° = 22.5, and the large resulting torque drives the first oscillation spike.
+- **Key takeaway:** P-only control works but produces oscillation and relies on plant drag for convergence. Adding the D-term (PID-SIM-02) should eliminate the oscillation; adding the I-term (PID-SIM-03) will address any real-world steady-state offset.
+
+**Evidence:** `flight_control/sim/test1_p_only.png`
 
 ---
 

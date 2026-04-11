@@ -25,7 +25,7 @@
 /* PID gains — start with the values from main.c, adjust here */
 #define KP   1.5f
 #define KI   0.0f
-#define KD   0.3f
+#define KD   0.0f
 
 #define PID_OUTPUT_LIMIT   100.0f
 #define PID_INTEGRAL_LIMIT  50.0f
@@ -60,7 +60,7 @@
  * (e.g. a gust of wind).  Set to 0 to disable.
  */
 #define DISTURBANCE_TIME_S   5.0f
-#define DISTURBANCE_TORQUE   5.0e-4f  /* N*m, roughly 50 g-force on one arm */
+#define DISTURBANCE_TORQUE   0.0f  /* disabled for this test */
 #define DISTURBANCE_DURATION 0.05f    /* 50 ms impulse */
 
 /* ---------- simulation ---------- */

@@ -11,6 +11,7 @@ import csv
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else "run.csv"
@@ -46,6 +47,11 @@ def main():
     axes[2].set_xlabel("Time (s)")
     axes[2].legend()
     axes[2].grid(True, alpha=0.3)
+
+    for ax in axes:
+        ax.xaxis.set_major_locator(MultipleLocator(1.0))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.5))
+        ax.tick_params(which='minor', length=3)
 
     plt.tight_layout()
     plt.savefig("sim_plot.png", dpi=150)
