@@ -24,8 +24,8 @@
 
 /* PID gains — start with the values from main.c, adjust here */
 #define KP   1.5f
-#define KI   0.0f
-#define KD   0.0f
+#define KI   0.5f
+#define KD   0.3f
 
 #define PID_OUTPUT_LIMIT   100.0f
 #define PID_INTEGRAL_LIMIT  50.0f
@@ -53,14 +53,14 @@
 #define DRAG_COEFF         1.0e-5f
 
 /* initial tilt in degrees — simulates the drone starting tilted */
-#define INITIAL_ANGLE_DEG  15.0f
+#define INITIAL_ANGLE_DEG  0.0f
 
 /*
  * Step disturbance: at DISTURBANCE_TIME_S a sudden torque kicks the drone
  * (e.g. a gust of wind).  Set to 0 to disable.
  */
-#define DISTURBANCE_TIME_S   5.0f
-#define DISTURBANCE_TORQUE   0.0f  /* disabled for this test */
+#define DISTURBANCE_TIME_S   3.0f
+#define DISTURBANCE_TORQUE   5.0e-4f
 #define DISTURBANCE_DURATION 0.05f    /* 50 ms impulse */
 
 /* ---------- simulation ---------- */

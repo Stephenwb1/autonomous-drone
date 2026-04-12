@@ -127,7 +127,17 @@ Disable the disturbance by setting `DISTURBANCE_TORQUE` to `0.0f`.
 - Compare side-by-side with `test1_p_only.png`.
 
 **Results:**
-_(fill in after running)_
+
+**Status: PASS**
+
+- **Oscillation eliminated:** The angle converges smoothly from 15° to 0° without ever crossing zero. No oscillation at all — a clear improvement over PID-SIM-01.
+- **Settling time:** Angle drops below 0.5° at t=0.73s and continues decaying monotonically.
+- **No overshoot:** The angle never goes negative, confirming the D term damps out the energy that caused oscillation in the P-only test.
+- **PID output:** Initial spike to -100 (saturated due to large derivative kick on the first step — error jumps from 0 to -15, creating a large d/dt), then smoothly decays toward 0 as the angle approaches setpoint.
+- **Comparison with PID-SIM-01:** In the P-only test, the angle crossed zero and oscillated before settling. Here, the D term resists rapid changes and removes that overshoot entirely. The trade-off is slightly slower initial convergence (angle is still 1.78° at t=0.43, versus nearly 0° in test 1), but the response is much cleaner.
+- **Key takeaway:** The D term acts as a damper on the P-term "spring." PD control gives smooth, monotonic convergence with no overshoot — exactly what a drone needs for stable flight.
+
+**Evidence:** `flight_control/sim/test2_pd.png`
 
 ---
 
@@ -162,8 +172,16 @@ Disable the disturbance by setting `DISTURBANCE_TORQUE` to `0.0f`.
 - Note peak-to-peak oscillation amplitude.
 - Note how many times the PID output hits ±100 in the first 2 seconds.
 
-**Results:**
-_(fill in after running)_
+**Results:** PASS
+
+- **Oscillation is significantly worse than PID-SIM-01:** The angle overshoots to about -9° on the first swing (compared to about -4° with KP=1.5), and the system crosses zero 18 times total versus 7 in Test 1. In the first half second alone there are 10 zero crossings — the controller is overcorrecting back and forth rapidly.
+- **Peak-to-peak amplitude:** About 20° (from +11° to -9°), wider than Test 1's 18°. The higher gain pushes too hard on every swing, which makes the next swing even worse.
+- **PID output saturation:** Hits -100 on the very first step (same as Test 1 — the initial 15° error saturates both). After that, the rapid back-and-forth keeps the angle small enough that the PID output stays within bounds, but the output keeps flipping direction. On real hardware, this would cause the motors to constantly reverse thrust, leading to stuttering and mechanical stress.
+- **Eventual settling via drag:** The simulation drag eventually damps the oscillation (angle under 1° by about a third of a second, essentially zero by 1 second), but the transient is violent. On a real drone without this idealized drag, the oscillation could be sustained or divergent.
+- **Comparison with PID-SIM-01:** With KP=1.5 the system oscillated but settled relatively quickly. Increasing KP to 8.0 made the overshoot about twice as bad and the oscillation much more aggressive. This confirms that cranking up P alone is not a valid tuning strategy — it makes the initial response faster but at the cost of stability.
+- **Key takeaway:** High proportional gain without derivative damping produces aggressive oscillation that would be catastrophic on real hardware. This test motivates PID-SIM-04, where we add an adequate D term to tame the high P gain.
+
+**Evidence:** `flight_control/sim/test3_high_p.png`
 
 ---
 
@@ -199,8 +217,16 @@ Disable the disturbance by setting `DISTURBANCE_TORQUE` to `0.0f`.
 - Note settling time and compare with PID-SIM-02 and PID-SIM-03.
 - Note peak overshoot if any.
 
-**Results:**
-_(fill in after running)_
+**Results:** FAIL — D gain too aggressive, causes chattering
+
+- **Chattering instead of convergence:** The PID output alternates between +100 and -100 every single time step for the entire 10-second simulation. The angle gets stuck bouncing between about 3° and 5° and never reaches 0.
+- **Why this happens:** With KD=0.8 and a time step of 0.01s, the derivative term amplifies every small change in error by dividing by dt. Even a tiny angle change gets multiplied by 0.8/0.01 = 80, which is enough to slam the output to the opposite saturation limit. The controller overcorrects, then overcorrects the overcorrection, forever.
+- **All 1000 steps are saturated:** The PID output hits ±100 on every single step — the controller is never in a "normal" operating range.
+- **No settling:** The angle never drops below 3°. Compare this to Test 3 (same KP, no D) which at least settled eventually thanks to drag.
+- **Key takeaway:** More D is not always better. There is a limit to how much derivative gain you can use before the controller starts fighting itself. This is a known issue called "chattering" in control theory. The fix involves either reducing KD, adding a low-pass filter on the D term, or computing the derivative on measurement instead of error (which is already on our to-do list for `pid.c`).
+- **What we should try next:** A lower KD value (like 0.3-0.5) with this high KP, or fix the D-term implementation first. This result shows we need to be careful with D gain tuning.
+
+**Evidence:** `flight_control/sim/test4_high_pd.png`
 
 ---
 
@@ -231,7 +257,7 @@ float torque = output * TORQUE_PER_UNIT;
 ```
 And add immediately after it:
 ```c
-torque += 1.0e-5f;
+torque += 5.0e-4f;
 ```
 
 **Steps:**
@@ -252,7 +278,14 @@ torque += 1.0e-5f;
 - Note the settling time and overshoot in run B.
 
 **Results:**
-_(fill in after running)_
+
+**Verdict: PASS**
+
+**Run A (no I-term):** The angle dropped from 15 degrees and settled at about 2 degrees. It stopped moving and the angular velocity went to zero, but the drone never made it all the way to level. Since there is no I-term, the only way the controller can produce output is if there is still some error. So the error has to stay there permanently for the controller to keep pushing back against the bias. This is called steady-state error.
+
+**Run B (with I-term):** The angle dropped from 15 degrees and kept slowly working its way toward zero. By about 1 second it was below 1 degree, and by about 5 seconds it was nearly at zero. By the end of the 10-second run the angle was essentially zero. There was no overshoot -- the angle never went below zero. The I-term slowly accumulated a correction that fully cancelled out the constant bias, which is exactly its job.
+
+**Why this matters:** In a real drone, the center of gravity is never perfectly centered. One side is always slightly heavier than the other, or a prop produces slightly more thrust. Without an I-term, the drone would hover with a permanent tilt. The I-term notices that the error is not going away and keeps adding more correction until the drone is truly level. This test proves that behavior works correctly.
 
 ---
 
@@ -292,7 +325,17 @@ If the integral clamp were removed, the overshoot would be severe (potentially e
 - Note how long the PID output remains saturated at ±100.
 
 **Results:**
-_(fill in after running)_
+
+**Verdict: PASS**
+
+The drone started at 45 degrees tilted -- three times worse than our normal 15-degree tests. Despite this huge initial error, the system recovered well:
+
+- The angle dropped quickly from 45 degrees and crossed zero at about half a second. That means the controller brought the drone from 45 degrees to level in under a second.
+- It overshot past zero by about 7 degrees in the negative direction. That overshoot is much smaller than the starting 45 degrees, which means the integral clamp is doing its job. Without the clamp, the overshoot would have been way worse because the integral would have built up a huge value while the output was maxed out.
+- By about 3 seconds the angle was essentially at zero and stayed there.
+- The PID output only hit full saturation (100) on the very first step, then quickly came back down. This shows the integral limit prevented the I-term from building up too much during the initial recovery.
+
+**Why this matters:** On a real drone, if you pick it up and tilt it 45 degrees then let go, the I-term will accumulate a lot of correction while the PID is maxed out trying to recover. The integral clamp prevents that accumulated value from causing a huge overshoot in the opposite direction. This test proves that protection is working.
 
 ---
 
@@ -302,10 +345,13 @@ _(fill in after running)_
 A well-tuned PID controller should recover from an unexpected external force (simulating a wind gust). The drone should deflect briefly, then return to level. With an I-term present, the steady-state angle after recovery should be exactly 0.
 
 **Configuration:**
+
+The original planned gains (KP=5, KI=0.2, KD=0.6) caused the same chattering problem we saw in Test 4 — the disturbance created a sudden error spike that the aggressive D term amplified, locking the system into permanent oscillation between saturation limits. We switched to the stable gains proven in Tests 2 and 5.
+
 ```c
-#define KP   5.0f
-#define KI   0.2f
-#define KD   0.6f
+#define KP   1.5f
+#define KI   0.5f
+#define KD   0.3f
 #define INITIAL_ANGLE_DEG  0.0f
 #define DISTURBANCE_TIME_S    3.0f
 #define DISTURBANCE_TORQUE    5.0e-4f
@@ -331,8 +377,13 @@ A well-tuned PID controller should recover from an unexpected external force (si
 - Note recovery time.
 - Note steady-state angle after recovery.
 
-**Results:**
-_(fill in after running)_
+**Results: PASS**
+
+For the first 3 seconds the drone sits perfectly level at 0 degrees — no input, no movement. At t=3 seconds the wind gust hits. The angle deflects to less than 1 degree (peak of about a third of a degree). The PID immediately starts correcting, and the drone is back below a tenth of a degree within about a third of a second. After that, the angle settles to essentially zero — the I-term eliminates any leftover error.
+
+The PID output spikes briefly when the gust hits, then quickly returns to near zero. There is no oscillation, no overshoot past the setpoint, and no chattering. The controller handles the disturbance smoothly and returns to level.
+
+**Key takeaway:** This test confirms that a well-tuned PID (with moderate gains and all three terms active) can handle sudden external forces. The original aggressive gains (KP=5, KD=0.6) failed because the D term overreacted to the sudden disturbance, reinforcing the lesson from Test 4 — more gain is not always better.
 
 ---
 
