@@ -71,8 +71,9 @@ int main(void)
         .p = KP,
         .i = KI,
         .d = KD,
-        .integral_limit = PID_INTEGRAL_LIMIT,
-        .output_limit   = PID_OUTPUT_LIMIT,
+        .integral_limit  = PID_INTEGRAL_LIMIT,
+        .output_limit    = PID_OUTPUT_LIMIT,
+        .d_filter_alpha  = 0.3f,
     };
     pid_reset(&pid);
 

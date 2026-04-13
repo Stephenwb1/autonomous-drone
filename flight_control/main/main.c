@@ -75,16 +75,19 @@ void app_main(void)
         .p = PITCH_P, .i = PITCH_I, .d = PITCH_D,
         .integral_limit = PID_INTEGRAL_LIMIT,
         .output_limit   = PID_OUTPUT_LIMIT,
+        .d_filter_alpha = 0.3f,
     };
     pid_ctrl_t pid_roll = {
         .p = ROLL_P, .i = ROLL_I, .d = ROLL_D,
         .integral_limit = PID_INTEGRAL_LIMIT,
         .output_limit   = PID_OUTPUT_LIMIT,
+        .d_filter_alpha = 0.3f,
     };
     pid_ctrl_t pid_yaw = {
         .p = YAW_P, .i = YAW_I, .d = YAW_D,
         .integral_limit = PID_INTEGRAL_LIMIT,
         .output_limit   = PID_OUTPUT_LIMIT,
+        .d_filter_alpha = 0.3f,
     };
     pid_reset(&pid_pitch);
     pid_reset(&pid_roll);

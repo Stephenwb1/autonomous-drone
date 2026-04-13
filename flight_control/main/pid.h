@@ -12,9 +12,11 @@ typedef struct {
     float i;
     float d;
     float integral;
-    float prev_error;
+    float prev_measurement;
+    float prev_derivative;
     float integral_limit;   //caps |integral| to prevent windup
     float output_limit;     //caps |output| to the actuator range
+    float d_filter_alpha;   //low-pass filter on D term (0–1, lower = smoother)
 } pid_ctrl_t;
 
 //zeros out the accumulated state (integral and previous error)

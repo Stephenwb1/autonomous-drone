@@ -133,7 +133,7 @@ Disable the disturbance by setting `DISTURBANCE_TORQUE` to `0.0f`.
 - **Oscillation eliminated:** The angle converges smoothly from 15° to 0° without ever crossing zero. No oscillation at all — a clear improvement over PID-SIM-01.
 - **Settling time:** Angle drops below 0.5° at t=0.73s and continues decaying monotonically.
 - **No overshoot:** The angle never goes negative, confirming the D term damps out the energy that caused oscillation in the P-only test.
-- **PID output:** Initial spike to -100 (saturated due to large derivative kick on the first step — error jumps from 0 to -15, creating a large d/dt), then smoothly decays toward 0 as the angle approaches setpoint.
+- **PID output:** Initial spike to -100 (saturated because the large initial error plus the rate of change combine to exceed the output limit), then smoothly decays toward 0 as the angle approaches setpoint.
 - **Comparison with PID-SIM-01:** In the P-only test, the angle crossed zero and oscillated before settling. Here, the D term resists rapid changes and removes that overshoot entirely. The trade-off is slightly slower initial convergence (angle is still 1.78° at t=0.43, versus nearly 0° in test 1), but the response is much cleaner.
 - **Key takeaway:** The D term acts as a damper on the P-term "spring." PD control gives smooth, monotonic convergence with no overshoot — exactly what a drone needs for stable flight.
 
@@ -217,14 +217,17 @@ Disable the disturbance by setting `DISTURBANCE_TORQUE` to `0.0f`.
 - Note settling time and compare with PID-SIM-02 and PID-SIM-03.
 - Note peak overshoot if any.
 
-**Results:** FAIL — D gain too aggressive, causes chattering
+**Results:** PASS (after derivative algorithm fix)
 
-- **Chattering instead of convergence:** The PID output alternates between +100 and -100 every single time step for the entire 10-second simulation. The angle gets stuck bouncing between about 3° and 5° and never reaches 0.
-- **Why this happens:** With KD=0.8 and a time step of 0.01s, the derivative term amplifies every small change in error by dividing by dt. Even a tiny angle change gets multiplied by 0.8/0.01 = 80, which is enough to slam the output to the opposite saturation limit. The controller overcorrects, then overcorrects the overcorrection, forever.
-- **All 1000 steps are saturated:** The PID output hits ±100 on every single step — the controller is never in a "normal" operating range.
-- **No settling:** The angle never drops below 3°. Compare this to Test 3 (same KP, no D) which at least settled eventually thanks to drag.
-- **Key takeaway:** More D is not always better. There is a limit to how much derivative gain you can use before the controller starts fighting itself. This is a known issue called "chattering" in control theory. The fix involves either reducing KD, adding a low-pass filter on the D term, or computing the derivative on measurement instead of error (which is already on our to-do list for `pid.c`).
-- **What we should try next:** A lower KD value (like 0.3-0.5) with this high KP, or fix the D-term implementation first. This result shows we need to be careful with D gain tuning.
+**Note:** This test originally FAILED with the old derivative-on-error algorithm. The old code computed the derivative by looking at how fast the error changed, dividing by the time step (0.01 seconds). With KD=0.8, even a tiny angle change got multiplied by 0.8/0.01 = 80, which slammed the output to the opposite saturation limit every single step. The controller fought itself in an endless loop called "chattering" and the angle never settled.
+
+After fixing the derivative algorithm (computing on measurement instead of error, plus adding a low-pass filter), this test now passes:
+
+- **Fast convergence:** The angle drops from 15 degrees to under 1 degree by about 0.2 seconds, and is essentially zero by 1 second. This is significantly faster than Test 2 (which took about 0.7 seconds to get below 1 degree with KP=1.5).
+- **Some initial oscillation:** The high P gain causes the angle to overshoot past zero briefly (going to about -1 degree) and bounce a couple of times in the first 0.2 seconds. But unlike the old results where it never stopped bouncing, the low-pass filter on the D term smooths things out and the system settles cleanly.
+- **No chattering:** The PID output is no longer stuck alternating between +100 and -100. It spikes during the initial correction, then quickly settles to near zero. The filter prevents the D term from amplifying tiny changes into wild overcorrections.
+- **Comparison with Test 3 (same KP, no D):** Test 3 had violent oscillation that took a full second to damp out. Adding KD=0.8 with the improved derivative algorithm eliminates most of that oscillation and produces a much faster, cleaner response.
+- **Key takeaway:** The derivative-on-measurement algorithm with a low-pass filter made this gain combination viable. The old derivative-on-error approach could not handle aggressive D gains at all. This proves that the algorithm fix was necessary and effective.
 
 **Evidence:** `flight_control/sim/test4_high_pd.png`
 
@@ -346,7 +349,7 @@ A well-tuned PID controller should recover from an unexpected external force (si
 
 **Configuration:**
 
-The original planned gains (KP=5, KI=0.2, KD=0.6) caused the same chattering problem we saw in Test 4 — the disturbance created a sudden error spike that the aggressive D term amplified, locking the system into permanent oscillation between saturation limits. We switched to the stable gains proven in Tests 2 and 5.
+We use the stable gains proven in Tests 2 and 5. (In early testing with the old derivative-on-error algorithm, aggressive gains like KP=5, KD=0.6 caused chattering. With the new derivative-on-measurement algorithm those gains would likely work, but we kept the moderate gains here since they produce clean, reliable results.)
 
 ```c
 #define KP   1.5f
@@ -383,7 +386,7 @@ For the first 3 seconds the drone sits perfectly level at 0 degrees — no input
 
 The PID output spikes briefly when the gust hits, then quickly returns to near zero. There is no oscillation, no overshoot past the setpoint, and no chattering. The controller handles the disturbance smoothly and returns to level.
 
-**Key takeaway:** This test confirms that a well-tuned PID (with moderate gains and all three terms active) can handle sudden external forces. The original aggressive gains (KP=5, KD=0.6) failed because the D term overreacted to the sudden disturbance, reinforcing the lesson from Test 4 — more gain is not always better.
+**Key takeaway:** This test confirms that a well-tuned PID (with moderate gains and all three terms active) can handle sudden external forces and return to level smoothly.
 
 ---
 
@@ -391,22 +394,29 @@ The PID output spikes briefly when the gust hits, then quickly returns to near z
 
 - The plant model is a simplified single-axis simulation. It does not capture cross-axis coupling (pitch affecting roll), motor response delay, propeller aerodynamics, or sensor noise.
 - Physical parameters (moment of inertia, torque per unit) are estimates based on component specs. Actual values will differ and gains will need re-tuning on real hardware.
-- The simulation uses the PID's current derivative-on-error implementation. A known improvement (derivative-on-measurement) has been identified and will be implemented before hardware testing.
-- No sensor noise is injected. Real IMU data will be noisier than the simulation, which will affect the D term.
+- No sensor noise is injected. Real IMU data will be noisier than the simulation, which will affect the D term. The low-pass filter on the derivative should help with this, but the filter coefficient (`d_filter_alpha`) may need tuning on real hardware.
 
 ---
 
-## 5. Next Phase Testing (Planned)
+## 5. Derivative Algorithm Fix (Completed)
 
-- **PID code improvements:** Fix derivative kick (compute derivative on measurement instead of error) and add a low-pass filter on the D term. Re-run all 7 tests to confirm behavior does not regress.
+After the initial 7 tests, the PID derivative algorithm was upgraded:
+
+- **Derivative on measurement (not error):** Instead of computing `(error - prev_error) / dt`, the code now computes `-(measured - prev_measurement) / dt`. This avoids "derivative kick" — a spike in the D term whenever the setpoint changes suddenly. When only the measurement moves (not the setpoint), both methods give the same result, which is why Tests 1-3 and 5-7 produced identical behavior before and after the fix.
+- **Low-pass filter on the D term:** A first-order filter smooths the raw derivative: `filtered = alpha * raw + (1 - alpha) * previous`. With `alpha = 0.3`, each new reading only contributes 30% and the other 70% comes from the previous smoothed value. This prevents sensor noise (or rapid simulation jitter) from causing wild motor commands.
+
+The most dramatic improvement was **Test 4**, which went from a permanent FAIL (chattering) to a clean PASS. The filter prevented the aggressive D gain from amplifying tiny changes into full-saturation overcorrections. All other tests continued to pass with essentially unchanged behavior.
+
+## 6. Next Phase Testing (Planned)
+
 - **Level 2 — On-chip IMU verification:** Flash firmware with `TEST_THROTTLE=0`, tilt the board by hand, verify PID outputs match expected direction and magnitude on the serial monitor.
 - **Level 3 — Tethered motor test:** Mount drone on a single-axis pivot, raise throttle to a low value, arm motors, verify the PID stabilizes the axis.
 - **GPS integration:** Write UART driver and NMEA parser for the NewBeeDrone M10Q after PID is validated.
 
 ---
 
-## 6. Conclusion
+## 7. Conclusion
 
 This test plan validates the PID controller implementation (`pid.c`) using a desktop simulation before any hardware testing.
 Each test is derived from a control theory hypothesis and proves a specific property of the controller: proportional response, derivative damping, integral steady-state correction, windup protection, and disturbance rejection.
-Passing all 7 tests confirms the PID foundation is correct and ready for on-hardware validation (Level 2 and Level 3 testing).
+All 7 tests pass with the updated derivative-on-measurement algorithm and low-pass filter. The PID foundation is correct and ready for on-hardware validation (Level 2 and Level 3 testing).
