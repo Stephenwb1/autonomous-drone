@@ -18,7 +18,7 @@ static const char *TAG = "main";
 #define RAD_TO_DEG  (180.0f / M_PI)
 
 #define FUSION_INTERVAL_MS  10
-#define PRINT_EVERY_N       10
+#define PRINT_EVERY_N       100
 
 #define ALPHA  0.98f
 

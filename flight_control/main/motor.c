@@ -40,7 +40,7 @@ static bool motor_on[MOTOR_COUNT]   = {false, false, false, false};
 static void motor_apply_duty(motor_t motor)
 {
     int duty = motor_on[motor] ? motor_duty[motor] : 0;
-    ESP_LOGI(TAG, "Motor %d -> duty %d", motor + 1, duty);
+    ESP_LOGD(TAG, "Motor %d -> duty %d", motor + 1, duty);
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, ledc_channels[motor], duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, ledc_channels[motor]));
 }
