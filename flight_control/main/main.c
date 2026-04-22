@@ -108,8 +108,17 @@ void app_main(void)
                                    d.accel_z_g * d.accel_z_g)) * RAD_TO_DEG;
     }
 
-    ESP_LOGI(TAG, "Throttle=%d  Motors OFF (call motor_set_on_off to enable)", TEST_THROTTLE);
-    ESP_LOGI(TAG, "Loop running at %d Hz", 1000 / FUSION_INTERVAL_MS);
+    ESP_LOGI(TAG, "Throttle=%d  Loop=%d Hz", TEST_THROTTLE, 1000 / FUSION_INTERVAL_MS);
+
+    // ESP_LOGW(TAG, "ARMING in 5 seconds — hold the drone firmly!");
+    // for (int i = 5; i > 0; i--) {
+    //     ESP_LOGW(TAG, "  %d...", i);
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    // }
+    // for (int m = 0; m < MOTOR_COUNT; m++) {
+    //     motor_set_on_off(m, true);
+    // }
+    // ESP_LOGW(TAG, "ARMED — motors are LIVE");
 
     int64_t prev_us = esp_timer_get_time();
     int print_counter = 0;
@@ -151,10 +160,10 @@ void app_main(void)
         float r = pid_r * scale;
         float y = pid_y * scale;
 
-        int m1 = clamp_duty((int)(TEST_THROTTLE + p + r - y));
-        int m2 = clamp_duty((int)(TEST_THROTTLE + p - r + y));
-        int m3 = clamp_duty((int)(TEST_THROTTLE - p + r + y));
-        int m4 = clamp_duty((int)(TEST_THROTTLE - p - r - y));
+        int m1 = clamp_duty((int)(TEST_THROTTLE - p - r - y)); //(front-left)
+        int m2 = clamp_duty((int)(TEST_THROTTLE - p + r + y)); //(front-right)
+        int m3 = clamp_duty((int)(TEST_THROTTLE + p - r + y)); //(rear-left)
+        int m4 = clamp_duty((int)(TEST_THROTTLE + p + r - y)); //(rear-right)
 
         motor_set_speed(MOTOR_1, m1);
         motor_set_speed(MOTOR_2, m2);
